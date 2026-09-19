@@ -1,14 +1,11 @@
 package com.evalucion.tvmazemiddleware.service;
 
 import com.evalucion.tvmazemiddleware.client.TvMazeClient;
-import com.evalucion.tvmazemiddleware.dto.CommentSummaryDto;
-import com.evalucion.tvmazemiddleware.repository.CommentRepository;
 import org.bson.Document;
 import org.springframework.data.mongodb.core.MongoTemplate;
 import org.springframework.stereotype.Service;
 
 import java.util.LinkedHashMap;
-import java.util.List;
 import java.util.Map;
 
 @Service
@@ -18,19 +15,19 @@ public class ShowCacheService {
 
     private final MongoTemplate mongoTemplate;
     private final TvMazeClient tvMazeClient;
-    private final CommentRepository commentRepository;
+    private final CommentService commentService;
 
     public ShowCacheService(MongoTemplate mongoTemplate, TvMazeClient tvMazeClient,
-                             CommentRepository commentRepository) {
+                             CommentService commentService) {
         this.mongoTemplate = mongoTemplate;
         this.tvMazeClient = tvMazeClient;
-        this.commentRepository = commentRepository;
+        this.commentService = commentService;
     }
 
     public Map<String, Object> getShow(long showId) {
         Document cached = mongoTemplate.findById(showId, Document.class, COLLECTION);
         Map<String, Object> show = cached != null ? withoutMongoId(cached) : fetchAndCache(showId);
-        show.put("comments", comments(showId));
+        show.put("comments", commentService.findSummaries(showId));
         return show;
     }
 
@@ -38,12 +35,6 @@ public class ShowCacheService {
         Map<String, Object> show = tvMazeClient.getShow(showId);
         saveToCache(showId, show);
         return show;
-    }
-
-    private List<CommentSummaryDto> comments(long showId) {
-        return commentRepository.findByShowId(showId).stream()
-                .map(comment -> new CommentSummaryDto(comment.getComment(), comment.getRating()))
-                .toList();
     }
 
     private void saveToCache(long showId, Map<String, Object> show) {

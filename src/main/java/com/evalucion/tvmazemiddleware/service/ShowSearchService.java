@@ -5,30 +5,38 @@ import com.evalucion.tvmazemiddleware.client.dto.TvMazeSearchResultDto;
 import com.evalucion.tvmazemiddleware.client.dto.TvMazeShowDto;
 import com.evalucion.tvmazemiddleware.dto.CommentSummaryDto;
 import com.evalucion.tvmazemiddleware.dto.ShowSummaryDto;
-import com.evalucion.tvmazemiddleware.repository.CommentRepository;
 import org.jsoup.Jsoup;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
+import java.util.Map;
 
 @Service
 public class ShowSearchService {
 
     private final TvMazeClient tvMazeClient;
-    private final CommentRepository commentRepository;
+    private final CommentService commentService;
 
-    public ShowSearchService(TvMazeClient tvMazeClient, CommentRepository commentRepository) {
+    public ShowSearchService(TvMazeClient tvMazeClient, CommentService commentService) {
         this.tvMazeClient = tvMazeClient;
-        this.commentRepository = commentRepository;
+        this.commentService = commentService;
     }
 
     public List<ShowSummaryDto> search(String query) {
-        return tvMazeClient.search(query).stream()
-                .map(this::toShowSummary)
+        List<TvMazeSearchResultDto> results = tvMazeClient.search(query);
+        Map<Long, List<CommentSummaryDto>> commentsByShowId = commentService.findSummariesByShowIds(showIds(results));
+        return results.stream()
+                .map(result -> toShowSummary(result, commentsByShowId))
                 .toList();
     }
 
-    private ShowSummaryDto toShowSummary(TvMazeSearchResultDto result) {
+    private List<Long> showIds(List<TvMazeSearchResultDto> results) {
+        return results.stream()
+                .map(result -> result.show().id())
+                .toList();
+    }
+
+    private ShowSummaryDto toShowSummary(TvMazeSearchResultDto result, Map<Long, List<CommentSummaryDto>> commentsByShowId) {
         TvMazeShowDto show = result.show();
         return new ShowSummaryDto(
                 show.id(),
@@ -36,14 +44,8 @@ public class ShowSearchService {
                 resolveChannel(show),
                 stripHtml(show.summary()),
                 show.genres(),
-                comments(show.id())
+                commentsByShowId.getOrDefault(show.id(), List.of())
         );
-    }
-
-    private List<CommentSummaryDto> comments(long showId) {
-        return commentRepository.findByShowId(showId).stream()
-                .map(comment -> new CommentSummaryDto(comment.getComment(), comment.getRating()))
-                .toList();
     }
 
     // TV Maze reporta el canal en network (TV) o en webChannel (streaming), nunca en ambos.
